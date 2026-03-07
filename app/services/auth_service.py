@@ -31,13 +31,18 @@ async def send_login_otp(data: LoginRequest, db: AsyncSession):
 
     current_time = get_ist_time()
 
-    # delete expired OTPs
-    await auth_repo.delete_expired_otps(db, member.id, current_time)
+    # Delete expired OTPs from DB
+    await auth_repo.delete_expired_otps(db, current_time)
 
+    # Delete previous OTP of this member (only 1 OTP allowed)
+    await auth_repo.delete_member_otps(db, member.id)
+
+    # Generate OTP
     otp_code = generate_otp()
 
     expires_at = current_time + timedelta(minutes=OTP_EXPIRY_MINUTES)
 
+    # Save OTP
     await auth_repo.create_otp(
         db,
         member.id,
@@ -45,7 +50,7 @@ async def send_login_otp(data: LoginRequest, db: AsyncSession):
         expires_at
     )
 
-    # Send email if login using email
+    # Send OTP email if login using email
     if "@" in identifier:
         send_otp_email(identifier, otp_code)
 
@@ -86,15 +91,14 @@ async def verify_login_otp(data: VerifyOTPRequest, db: AsyncSession):
             detail="Invalid or expired OTP"
         )
 
-    # delete OTP after successful verification
+    # OTP verified → delete it
     await auth_repo.delete_otp(db, otp_obj)
 
-    # create JWT token
+    # Generate JWT token
     token = create_access_token(
         {"member_id": member.id}
     )
 
-    # member response
     member_data = {
         "id": member.id,
         "full_name": member.full_name,

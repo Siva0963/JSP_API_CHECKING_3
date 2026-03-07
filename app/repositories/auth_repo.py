@@ -23,6 +23,22 @@ async def get_member_by_identifier(db: AsyncSession, identifier: str):
 
 
 # ==========================================
+# DELETE ALL OTPs OF MEMBER
+# (Ensures only 1 OTP exists)
+# ==========================================
+
+async def delete_member_otps(db: AsyncSession, member_id: int):
+
+    await db.execute(
+        delete(OTP).where(
+            OTP.member_id == member_id
+        )
+    )
+
+    await db.commit()
+
+
+# ==========================================
 # CREATE OTP
 # ==========================================
 
@@ -43,7 +59,7 @@ async def create_otp(db: AsyncSession, member_id: int, otp: str, expires_at):
 
 
 # ==========================================
-# GET VALID OTP (CHECK NOT EXPIRED)
+# GET VALID OTP
 # ==========================================
 
 async def get_valid_otp(db: AsyncSession, member_id: int, otp: str, current_time):
@@ -60,7 +76,7 @@ async def get_valid_otp(db: AsyncSession, member_id: int, otp: str, current_time
 
 
 # ==========================================
-# DELETE OTP AFTER SUCCESSFUL VERIFICATION
+# DELETE OTP AFTER VERIFICATION
 # ==========================================
 
 async def delete_otp(db: AsyncSession, otp_obj: OTP):
@@ -70,14 +86,13 @@ async def delete_otp(db: AsyncSession, otp_obj: OTP):
 
 
 # ==========================================
-# DELETE EXPIRED OTPS
+# DELETE EXPIRED OTPs
 # ==========================================
 
-async def delete_expired_otps(db: AsyncSession, member_id: int, current_time):
+async def delete_expired_otps(db: AsyncSession, current_time):
 
     await db.execute(
         delete(OTP).where(
-            OTP.member_id == member_id,
             OTP.expires_at < current_time
         )
     )
