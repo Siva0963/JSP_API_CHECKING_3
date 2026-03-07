@@ -47,7 +47,6 @@ class Constituency(Base):
     district_id = Column(Integer, ForeignKey("districts.id", ondelete="CASCADE"))
     name = Column(String(150), nullable=False)
 
-    #created_at = Column(DateTime, server_default=func.now())
 
     district = relationship("District", back_populates="constituencies")
 
@@ -68,7 +67,7 @@ class Mandal(Base):
 
     name = Column(String(100), nullable=False)
 
-    #created_at = Column(DateTime, server_default=func.now())
+
 
     constituency = relationship("Constituency", back_populates="mandals")
 
@@ -89,8 +88,6 @@ class Panchayat(Base):
 
     name = Column(String(100), nullable=False)
 
-    #created_at = Column(DateTime, server_default=func.now())
-
     mandal = relationship("Mandal", back_populates="panchayats")
 
     wards = relationship("Ward", back_populates="panchayat", cascade="all, delete")
@@ -108,9 +105,6 @@ class Ward(Base):
     ward_number = Column(Integer, nullable=False)
     name = Column(String(150), nullable=True)
     panchayat_id = Column(Integer, ForeignKey("panchayats.id", ondelete="CASCADE"))
- 
-    #created_at = Column(DateTime, server_default=func.now())
- 
     __table_args__ = (
         UniqueConstraint("panchayat_id", "ward_number"),
         Index("idx_ward_panchayat", "panchayat_id"),
