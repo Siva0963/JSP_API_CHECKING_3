@@ -10,13 +10,14 @@ from app.repositories.auth_repo import (
     delete_otp,
 )
 
+from app.utils.email_utils import send_otp_email
 from app.utils.otp_utils import generate_otp
 from app.utils.jwt_utils import create_access_token
 from app.utils.pytz_utils import get_ist_time
 
 
 # =========================================================
-# SEND OTP SERVICE
+# SEND LOGIN OTP SERVICE
 # =========================================================
 
 async def send_login_otp_service(db: AsyncSession, mobile_or_email: str):
@@ -49,14 +50,15 @@ async def send_login_otp_service(db: AsyncSession, mobile_or_email: str):
         otp = generate_otp()
         expires_at = current_time + timedelta(minutes=5)
 
-        # Store OTP
+        # Store OTP in DB
         await create_otp(db, member.id, otp, expires_at)
 
-        # Send OTP (Replace with SMS/Email service)
+        # Send OTP
         if member.mobile == mobile_or_email:
+            # SMS integration can be added here
             print(f"OTP {otp} sent to mobile {member.mobile}")
         else:
-            print(f"OTP {otp} sent to email {member.email}")
+            send_otp_email(member.email, otp)
 
         return {"message": "OTP sent successfully"}
 
@@ -107,7 +109,7 @@ async def verify_otp_service(db: AsyncSession, mobile_or_email: str, otp: str):
                 detail="Member account is inactive"
             )
 
-        # Fetch OTP
+        # Fetch valid OTP
         otp_obj = await get_valid_otp(db, member.id, otp)
 
         if not otp_obj:
@@ -116,15 +118,16 @@ async def verify_otp_service(db: AsyncSession, mobile_or_email: str, otp: str):
                 detail="Invalid OTP"
             )
 
-        # Check OTP expiry
+        # Check expiry
         if otp_obj.expires_at < current_time:
             await delete_otp(db, otp_obj)
+
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="OTP expired"
             )
 
-        # Delete OTP after successful verification
+        # OTP verified → delete it
         await delete_otp(db, otp_obj)
 
         # Generate JWT token
@@ -155,6 +158,7 @@ async def verify_otp_service(db: AsyncSession, mobile_or_email: str, otp: str):
 
     except SQLAlchemyError as e:
         await db.rollback()
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Database error occurred while verifying OTP: {str(e)}"

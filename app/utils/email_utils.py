@@ -2,36 +2,45 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-from config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, FROM_EMAIL
+from app.core.config import settings
 
 
 def send_otp_email(to_email: str, otp: str):
 
-    subject = "Voting Login OTP"
+    try:
+        subject = "Voting Login OTP"
 
-    body = f"""
-    Hello,
+        body = f"""
+Hello,
 
-    Your OTP for login is:
+Your OTP for login is:
 
-    {otp}
+{otp}
 
-    OTP expires in 5 minutes.
-    """
+OTP expires in 5 minutes.
+"""
 
-    msg = MIMEMultipart()
-    msg["From"] = FROM_EMAIL
-    msg["To"] = to_email
-    msg["Subject"] = subject
+        msg = MIMEMultipart()
+        msg["From"] = settings.FROM_EMAIL
+        msg["To"] = to_email
+        msg["Subject"] = subject
 
-    msg.attach(MIMEText(body, "plain"))
+        msg.attach(MIMEText(body, "plain"))
 
-    server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
+        server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT)
 
-    server.starttls()
+        server.ehlo()
+        server.starttls()
+        server.ehlo()
 
-    server.login(SMTP_USER, SMTP_PASSWORD)
+        server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
 
-    server.sendmail(FROM_EMAIL, to_email, msg.as_string())
+        server.sendmail(settings.FROM_EMAIL, to_email, msg.as_string())
 
-    server.quit()
+        server.quit()
+
+        print("OTP email sent successfully")
+
+    except Exception as e:
+        print("Email sending failed:", e)
+        raise
