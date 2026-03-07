@@ -8,7 +8,6 @@ from app.repositories.auth_repo import (
     create_otp,
     get_valid_otp,
     delete_otp,
-    delete_expired_otps
 )
 
 from app.utils.otp_utils import generate_otp
@@ -29,7 +28,6 @@ async def send_login_otp_service(db: AsyncSession, mobile_or_email: str):
         )
 
     try:
-
         current_time = get_ist_time()
 
         # Fetch member
@@ -47,9 +45,6 @@ async def send_login_otp_service(db: AsyncSession, mobile_or_email: str):
                 detail="Member account is inactive"
             )
 
-        # Remove expired OTPs (single DB call)
-        await delete_expired_otps(db, member.id, current_time)
-
         # Generate OTP
         otp = generate_otp()
         expires_at = current_time + timedelta(minutes=5)
@@ -57,7 +52,7 @@ async def send_login_otp_service(db: AsyncSession, mobile_or_email: str):
         # Store OTP
         await create_otp(db, member.id, otp, expires_at)
 
-        # Send OTP (Replace with SMS/Email service later)
+        # Send OTP (Replace with SMS/Email service)
         if member.mobile == mobile_or_email:
             print(f"OTP {otp} sent to mobile {member.mobile}")
         else:
@@ -68,16 +63,17 @@ async def send_login_otp_service(db: AsyncSession, mobile_or_email: str):
     except HTTPException:
         raise
 
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error occurred while generating OTP"
+            detail=f"Database error occurred while generating OTP: {str(e)}"
         )
 
-    except Exception:
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unexpected server error"
+            detail=f"Unexpected server error: {str(e)}"
         )
 
 
@@ -94,33 +90,44 @@ async def verify_otp_service(db: AsyncSession, mobile_or_email: str, otp: str):
         )
 
     try:
-
         current_time = get_ist_time()
 
         # Fetch member
         member = await get_member_by_identifier(db, mobile_or_email)
 
         if not member:
-            raise HTTPException(status_code=404, detail="Member not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Member not found"
+            )
 
         if not member.is_active:
-            raise HTTPException(status_code=403, detail="Member account is inactive")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Member account is inactive"
+            )
 
         # Fetch OTP
         otp_obj = await get_valid_otp(db, member.id, otp)
 
         if not otp_obj:
-            raise HTTPException(status_code=400, detail="Invalid OTP")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid OTP"
+            )
 
-        # Check expiry
+        # Check OTP expiry
         if otp_obj.expires_at < current_time:
             await delete_otp(db, otp_obj)
-            raise HTTPException(status_code=400, detail="OTP expired")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="OTP expired"
+            )
 
-        # Delete OTP after success
+        # Delete OTP after successful verification
         await delete_otp(db, otp_obj)
 
-        # Create JWT token
+        # Generate JWT token
         token = create_access_token({"member_id": member.id})
 
         return {
@@ -146,14 +153,15 @@ async def verify_otp_service(db: AsyncSession, mobile_or_email: str, otp: str):
     except HTTPException:
         raise
 
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error occurred while verifying OTP"
+            detail=f"Database error occurred while verifying OTP: {str(e)}"
         )
 
-    except Exception:
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unexpected server error"
+            detail=f"Unexpected server error: {str(e)}"
         )

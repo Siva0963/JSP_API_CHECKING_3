@@ -30,7 +30,6 @@ class District(Base):
     id = Column(Integer, primary_key=True)
     state_id = Column(Integer, ForeignKey("states.id", ondelete="CASCADE"))
     name = Column(String(100), nullable=False)
-    #created_at = Column(DateTime, server_default=func.now())
     state = relationship("State", back_populates="districts")
     constituencies = relationship("Constituency", back_populates="district", cascade="all, delete")
 
@@ -47,8 +46,6 @@ class Constituency(Base):
 
     district_id = Column(Integer, ForeignKey("districts.id", ondelete="CASCADE"))
     name = Column(String(150), nullable=False)
-
-    #pincode = Column(String(10))
 
     #created_at = Column(DateTime, server_default=func.now())
 
@@ -178,7 +175,4 @@ class OTP(Base):
 
     created_at = Column(DateTime, default=get_ist_time)
 
-    member = relationship(
-        "Member",
-        back_populates="otps"
-    )
+    member = relationship("Member", back_populates="otps")

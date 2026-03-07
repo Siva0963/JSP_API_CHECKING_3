@@ -1,9 +1,12 @@
-from sqlalchemy.future import select
+from sqlalchemy import select, or_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import or_
 
 from app.models.models import Member, OTP
 
+
+# ==========================================
+# GET MEMBER BY MOBILE OR EMAIL
+# ==========================================
 
 async def get_member_by_identifier(db: AsyncSession, identifier: str):
 
@@ -19,6 +22,10 @@ async def get_member_by_identifier(db: AsyncSession, identifier: str):
     return result.scalars().first()
 
 
+# ==========================================
+# CREATE OTP
+# ==========================================
+
 async def create_otp(db: AsyncSession, member_id: int, otp: str, expires_at):
 
     otp_obj = OTP(
@@ -28,37 +35,44 @@ async def create_otp(db: AsyncSession, member_id: int, otp: str, expires_at):
     )
 
     db.add(otp_obj)
+
     await db.commit()
     await db.refresh(otp_obj)
 
     return otp_obj
 
 
+# ==========================================
+# GET VALID OTP
+# ==========================================
+
 async def get_valid_otp(db: AsyncSession, member_id: int, otp: str):
 
     result = await db.execute(
         select(OTP).where(
             OTP.member_id == member_id,
-            OTP.otp_code == otp,
-            OTP.is_used == False
+            OTP.otp_code == otp
         )
     )
 
     return result.scalars().first()
 
 
-async def mark_otp_used(db: AsyncSession, otp_obj: OTP):
+# ==========================================
+# DELETE OTP
+# ==========================================
 
-    otp_obj.is_used = True
-    await db.commit()
+async def delete_otp(db: AsyncSession, otp_obj: OTP):
 
-async def delete_otp(db, otp_obj):
     await db.delete(otp_obj)
     await db.commit()
 
 
-async def delete_expired_otps(db, member_id, current_time):
-    from sqlalchemy import delete
+# ==========================================
+# DELETE EXPIRED OTPS
+# ==========================================
+
+async def delete_expired_otps(db: AsyncSession, member_id: int, current_time):
 
     await db.execute(
         delete(OTP).where(
@@ -66,4 +80,5 @@ async def delete_expired_otps(db, member_id, current_time):
             OTP.expires_at < current_time
         )
     )
+
     await db.commit()
