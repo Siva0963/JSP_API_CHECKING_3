@@ -43,15 +43,16 @@ async def create_otp(db: AsyncSession, member_id: int, otp: str, expires_at):
 
 
 # ==========================================
-# GET VALID OTP
+# GET VALID OTP (CHECK NOT EXPIRED)
 # ==========================================
 
-async def get_valid_otp(db: AsyncSession, member_id: int, otp: str):
+async def get_valid_otp(db: AsyncSession, member_id: int, otp: str, current_time):
 
     result = await db.execute(
         select(OTP).where(
             OTP.member_id == member_id,
-            OTP.otp_code == otp
+            OTP.otp_code == otp,
+            OTP.expires_at > current_time
         )
     )
 
@@ -59,7 +60,7 @@ async def get_valid_otp(db: AsyncSession, member_id: int, otp: str):
 
 
 # ==========================================
-# DELETE OTP
+# DELETE OTP AFTER SUCCESSFUL VERIFICATION
 # ==========================================
 
 async def delete_otp(db: AsyncSession, otp_obj: OTP):

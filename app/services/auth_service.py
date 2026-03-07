@@ -1,171 +1,118 @@
-from datetime import timedelta
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import SQLAlchemyError
+from datetime import timedelta
 
-from app.repositories.auth_repo import (
-    get_member_by_identifier,
-    create_otp,
-    get_valid_otp,
-    delete_otp,
-)
-
-from app.utils.email_utils import send_otp_email
+from app.schemas.auth_schema import LoginRequest, VerifyOTPRequest
+from app.repositories import auth_repo
 from app.utils.otp_utils import generate_otp
 from app.utils.jwt_utils import create_access_token
+from app.utils.email_utils import send_otp_email
 from app.utils.pytz_utils import get_ist_time
 
 
-# =========================================================
-# SEND LOGIN OTP SERVICE
-# =========================================================
+OTP_EXPIRY_MINUTES = 5
 
-async def send_login_otp_service(db: AsyncSession, mobile_or_email: str):
 
-    if not mobile_or_email:
+# =====================================================
+# SEND LOGIN OTP
+# =====================================================
+
+async def send_login_otp(data: LoginRequest, db: AsyncSession):
+
+    identifier = data.mobile_or_email
+
+    member = await auth_repo.get_member_by_identifier(db, identifier)
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found"
+        )
+
+    current_time = get_ist_time()
+
+    # delete expired OTPs
+    await auth_repo.delete_expired_otps(db, member.id, current_time)
+
+    otp_code = generate_otp()
+
+    expires_at = current_time + timedelta(minutes=OTP_EXPIRY_MINUTES)
+
+    await auth_repo.create_otp(
+        db,
+        member.id,
+        otp_code,
+        expires_at
+    )
+
+    # Send email if login using email
+    if "@" in identifier:
+        send_otp_email(identifier, otp_code)
+
+    return {
+        "message": "OTP sent successfully"
+    }
+
+
+# =====================================================
+# VERIFY OTP
+# =====================================================
+
+async def verify_login_otp(data: VerifyOTPRequest, db: AsyncSession):
+
+    identifier = data.mobile_or_email
+    otp = data.otp
+
+    member = await auth_repo.get_member_by_identifier(db, identifier)
+
+    if not member:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found"
+        )
+
+    current_time = get_ist_time()
+
+    otp_obj = await auth_repo.get_valid_otp(
+        db,
+        member.id,
+        otp,
+        current_time
+    )
+
+    if not otp_obj:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mobile number or email is required"
+            detail="Invalid or expired OTP"
         )
 
-    try:
-        current_time = get_ist_time()
+    # delete OTP after successful verification
+    await auth_repo.delete_otp(db, otp_obj)
 
-        # Fetch member
-        member = await get_member_by_identifier(db, mobile_or_email)
+    # create JWT token
+    token = create_access_token(
+        {"member_id": member.id}
+    )
 
-        if not member:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Member not found"
-            )
+    # member response
+    member_data = {
+        "id": member.id,
+        "full_name": member.full_name,
+        "mobile": member.mobile,
+        "email": member.email,
+        "address": member.address,
+        "is_active": member.is_active,
+        "kriya_id": member.kriya_id,
+        "state_id": member.state_id,
+        "district_id": member.district_id,
+        "constituency_id": member.constituency_id,
+        "mandal_id": member.mandal_id,
+        "panchayat_id": member.panchayat_id,
+        "ward_id": member.ward_id
+    }
 
-        if not member.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Member account is inactive"
-            )
-
-        # Generate OTP
-        otp = generate_otp()
-        expires_at = current_time + timedelta(minutes=5)
-
-        # Store OTP in DB
-        await create_otp(db, member.id, otp, expires_at)
-
-        # Send OTP
-        if member.mobile == mobile_or_email:
-            # SMS integration can be added here
-            print(f"OTP {otp} sent to mobile {member.mobile}")
-        else:
-            send_otp_email(member.email, otp)
-
-        return {"message": "OTP sent successfully"}
-
-    except HTTPException:
-        raise
-
-    except SQLAlchemyError as e:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error occurred while generating OTP: {str(e)}"
-        )
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unexpected server error: {str(e)}"
-        )
-
-
-# =========================================================
-# VERIFY OTP SERVICE
-# =========================================================
-
-async def verify_otp_service(db: AsyncSession, mobile_or_email: str, otp: str):
-
-    if not mobile_or_email or not otp:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mobile/email and OTP are required"
-        )
-
-    try:
-        current_time = get_ist_time()
-
-        # Fetch member
-        member = await get_member_by_identifier(db, mobile_or_email)
-
-        if not member:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Member not found"
-            )
-
-        if not member.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Member account is inactive"
-            )
-
-        # Fetch valid OTP
-        otp_obj = await get_valid_otp(db, member.id, otp)
-
-        if not otp_obj:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid OTP"
-            )
-
-        # Check expiry
-        if otp_obj.expires_at < current_time:
-            await delete_otp(db, otp_obj)
-
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="OTP expired"
-            )
-
-        # OTP verified → delete it
-        await delete_otp(db, otp_obj)
-
-        # Generate JWT token
-        token = create_access_token({"member_id": member.id})
-
-        return {
-            "access_token": token,
-            "token_type": "bearer",
-            "member": {
-                "id": member.id,
-                "full_name": member.full_name,
-                "mobile": member.mobile,
-                "email": member.email,
-                "address": member.address,
-                "is_active": member.is_active,
-                "kriya_id": member.kriya_id,
-                "state_id": member.state_id,
-                "district_id": member.district_id,
-                "constituency_id": member.constituency_id,
-                "mandal_id": member.mandal_id,
-                "panchayat_id": member.panchayat_id,
-                "ward_id": member.ward_id
-            }
-        }
-
-    except HTTPException:
-        raise
-
-    except SQLAlchemyError as e:
-        await db.rollback()
-
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error occurred while verifying OTP: {str(e)}"
-        )
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unexpected server error: {str(e)}"
-        )
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "member": member_data
+    }

@@ -1,32 +1,50 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker, declarative_base
+import os
+from dotenv import load_dotenv
+from urllib.parse import quote_plus
 
-from app.core.config import settings
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+    AsyncSession,
+    async_sessionmaker,
+)
+from sqlalchemy.orm import declarative_base
 
+load_dotenv()
+
+# DATABASE CONFIG
+DB_USERNAME = os.getenv("DB_USERNAME")
+DB_PASSWORD = quote_plus(os.getenv("DB_PASSWORD", ""))
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT", "3306")
+DB_NAME = os.getenv("DB_NAME")
 
 DATABASE_URL = (
-    f"mysql+aiomysql://{settings.DB_USERNAME}:"
-    f"{settings.DB_PASSWORD}@{settings.DB_HOST}:"
-    f"{settings.DB_PORT}/{settings.DB_NAME}"
+    f"mysql+aiomysql://{DB_USERNAME}:{DB_PASSWORD}"
+    f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 
-
+# ASYNC ENGINE
 engine = create_async_engine(
     DATABASE_URL,
-    echo=True
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
 )
 
-
-AsyncSessionLocal = sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
-
-
+# BASE
 Base = declarative_base()
 
+# SESSION FACTORY
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
 
+# DEPENDENCY
 async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
