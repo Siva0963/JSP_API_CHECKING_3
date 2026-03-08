@@ -1,8 +1,12 @@
 from jose import jwt
 from datetime import datetime, timedelta
 
-SECRET_KEY = "supersecretkey"
-ALGORITHM = "HS256"
+ALGORITHM = "RS256"
+
+# Read private key
+with open("private_key.pem", "r") as f:
+    PRIVATE_KEY = f.read()
+
 
 def create_access_token(data: dict):
 
@@ -10,6 +14,6 @@ def create_access_token(data: dict):
 
     data.update({"exp": expire})
 
-    token = jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
+    token = jwt.encode(data, PRIVATE_KEY, algorithm=ALGORITHM)
 
     return token

@@ -10,18 +10,16 @@ from app.utils.email_utils import send_otp_email
 from app.utils.pytz_utils import get_ist_time
 from app.core.logger import logger
 
-
 OTP_EXPIRY_MINUTES = 5
 
-
 # =====================================================
+
 # SEND LOGIN OTP
+
 # =====================================================
 
 async def send_login_otp(data: LoginRequest, db: AsyncSession):
-
     try:
-
         identifier = data.mobile_or_email
 
         member = await auth_repo.get_member_by_identifier(db, identifier)
@@ -53,7 +51,7 @@ async def send_login_otp(data: LoginRequest, db: AsyncSession):
             expires_at
         )
 
-        # send email
+        # send email if identifier is email
         if "@" in identifier:
             send_otp_email(identifier, otp_code)
 
@@ -75,15 +73,14 @@ async def send_login_otp(data: LoginRequest, db: AsyncSession):
             detail="Internal server error"
         )
 
-
 # =====================================================
+
 # VERIFY OTP
+
 # =====================================================
 
 async def verify_login_otp(data: VerifyOTPRequest, db: AsyncSession):
-
     try:
-
         identifier = data.mobile_or_email
         otp = data.otp
 
@@ -117,15 +114,28 @@ async def verify_login_otp(data: VerifyOTPRequest, db: AsyncSession):
                 detail="Invalid or expired OTP"
             )
 
-        # delete OTP
+        # delete OTP after verification
         await auth_repo.delete_otp(db, otp_obj)
 
-        token = create_access_token(
-            {"member_id": member.id}
-        )
+        # =====================================================
+        # CREATE ACCESS TOKEN (INCLUDING LOCATION FIELDS)
+        # =====================================================
+
+        token_payload = {
+    "member_id": member.id,
+    "kriya_id": member.kriya_id,
+    "state_id": member.state_id,
+    "district_id": member.district_id,
+    "constituency_id": member.constituency_id,
+    "mandal_id": member.mandal_id,
+    "panchayat_id": member.panchayat_id,
+    "ward_id": member.ward_id
+}
+        token = create_access_token(token_payload)
 
         logger.info(f"Member logged in successfully: member_id={member.id}")
 
+        # member response
         member_data = {
             "id": member.id,
             "full_name": member.full_name,
@@ -159,3 +169,4 @@ async def verify_login_otp(data: VerifyOTPRequest, db: AsyncSession):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
         )
+
