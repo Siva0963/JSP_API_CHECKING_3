@@ -47,13 +47,26 @@ class LocationRepo:
         return result.scalars().all()
 
 
+  
+
     @staticmethod
     async def get_panchayats(db: AsyncSession, mandal_id: int):
 
         result = await db.execute(
             select(Panchayat).where(Panchayat.mandal_id == mandal_id)
         )
-        return result.scalars().all()
+
+        panchayats = result.scalars().all()
+
+        return [
+            {
+                "id": p.id,
+                "name": p.name,
+                "mandal_id": p.mandal_id,
+                "area_category": p.area_category
+            }
+            for p in panchayats
+        ]
 
 
     @staticmethod
@@ -62,4 +75,14 @@ class LocationRepo:
         result = await db.execute(
             select(Ward).where(Ward.panchayat_id == panchayat_id)
         )
-        return result.scalars().all()
+
+        wards = result.scalars().all()
+
+        return [
+            {
+                "id": w.id,
+                "name": w.name,
+                "panchayat_id": w.panchayat_id
+            }
+            for w in wards
+        ]

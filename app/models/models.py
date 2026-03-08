@@ -87,7 +87,8 @@ class Panchayat(Base):
     mandal_id = Column(Integer, ForeignKey("mandals.id", ondelete="CASCADE"))
 
     name = Column(String(100), nullable=False)
-
+    area_category = Column(String(50), nullable=False)
+ 
     mandal = relationship("Mandal", back_populates="panchayats")
 
     wards = relationship("Ward", back_populates="panchayat", cascade="all, delete")
