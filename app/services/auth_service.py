@@ -124,6 +124,7 @@ async def verify_login_otp(data: VerifyOTPRequest, db: AsyncSession):
         token_payload = {
     "member_id": member.id,
     "kriya_id": member.kriya_id,
+    "full_name": member.full_name,
     "state_id": member.state_id,
     "district_id": member.district_id,
     "constituency_id": member.constituency_id,
