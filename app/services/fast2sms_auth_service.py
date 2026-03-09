@@ -8,7 +8,7 @@ from app.repositories import auth_repo
 from app.utils.otp_utils import generate_otp
 from app.utils.jwt_utils import create_access_token
 from app.utils.email_utils import send_otp_email
-from app.utils.sms_service import SMSService
+from app.utils.fast2sms_service11 import SMSService
 from app.utils.pytz_utils import get_ist_time
 from app.core.logger import logger
 
@@ -50,7 +50,6 @@ async def send_login_otp(data: LoginRequest, db: AsyncSession):
         # GENERATE OTP
         # -------------------------------------------------
         otp_code = generate_otp()
-
         expires_at = current_time + timedelta(minutes=OTP_EXPIRY_MINUTES)
 
         await auth_repo.create_otp(
@@ -63,15 +62,16 @@ async def send_login_otp(data: LoginRequest, db: AsyncSession):
         # -------------------------------------------------
         # SEND OTP
         # -------------------------------------------------
-
         if "@" in identifier:
-            send_otp_email(identifier, otp_code)
+
+            await send_otp_email(identifier, otp_code)
+
             logger.info(f"OTP email sent to {identifier}")
 
         else:
             mobile_number = format_mobile_number(identifier)
 
-            SMSService.send_otp(mobile_number, otp_code)
+            await SMSService.send_otp(mobile_number, otp_code)
 
             logger.info(f"OTP SMS sent to {mobile_number}")
 
@@ -227,7 +227,7 @@ async def verify_login_otp(data: VerifyOTPRequest, db: AsyncSession):
 
 def format_mobile_number(number: str) -> str:
     """
-    Convert mobile number to E.164 format required by Twilio
+    Convert mobile number to E.164 format required by SMS providers
     """
 
     number = number.strip()

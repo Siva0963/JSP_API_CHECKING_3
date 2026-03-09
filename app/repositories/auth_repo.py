@@ -75,6 +75,8 @@ async def get_valid_otp(db: AsyncSession, member_id: int, otp: str, current_time
     return result.scalars().first()
 
 
+
+
 # ==========================================
 # DELETE OTP AFTER VERIFICATION
 # ==========================================
@@ -98,3 +100,26 @@ async def delete_expired_otps(db: AsyncSession, current_time):
     )
 
     await db.commit()
+
+
+from sqlalchemy import select, or_
+from app.models.models import Member
+
+
+async def get_member_by_identifier(db, identifier: str):
+
+    identifier = identifier.strip()
+
+    # Normalize mobile numbers
+    mobile_plain = identifier.replace("+91", "")
+
+    query = select(Member).where(
+        or_(
+            Member.email == identifier,
+            Member.mobile == identifier,
+            Member.mobile == mobile_plain
+        )
+    )
+
+    result = await db.execute(query)
+    return result.scalar_one_or_none()

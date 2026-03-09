@@ -1,10 +1,10 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
 
     # =========================
-    # DATABASE
+    # DATABASE CONFIGURATION
     # =========================
     DB_USERNAME: str
     DB_PASSWORD: str
@@ -13,12 +13,13 @@ class Settings(BaseSettings):
     DB_NAME: str
 
     # =========================
-    # API
+    # API SECURITY
     # =========================
     API_KEY: str
 
+
     # =========================
-    # SMTP
+    # SMTP EMAIL CONFIGURATION
     # =========================
     SMTP_HOST: str
     SMTP_PORT: int
@@ -26,9 +27,27 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str
     FROM_EMAIL: str
 
-    class Config:
-        env_file = ".env"
-        extra = "allow"
+    # =========================
+    # TWILIO SMS CONFIGURATION
+    # =========================
+    TWILIO_ACCOUNT_SID: str
+    TWILIO_AUTH_TOKEN: str
+    TWILIO_PHONE_NUMBER: str
+
+
+    # =========================
+    # fast2sms CONFIGURATION
+    # =========================
+    FAST2SMS_API_KEY: str
+    FAST2SMS_URL: str
+
+    # =========================
+    # ENV CONFIG
+    # =========================
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="allow"
+    )
 
 
 settings = Settings()
