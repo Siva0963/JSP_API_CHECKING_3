@@ -1,5 +1,6 @@
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
 from datetime import timedelta
 
 from app.schemas.auth_schema import LoginRequest, VerifyOTPRequest
@@ -12,15 +13,16 @@ from app.core.logger import logger
 
 OTP_EXPIRY_MINUTES = 5
 
+
 # =====================================================
-
 # SEND LOGIN OTP
-
 # =====================================================
 
 async def send_login_otp(data: LoginRequest, db: AsyncSession):
+
+    identifier = data.mobile_or_email
+
     try:
-        identifier = data.mobile_or_email
 
         member = await auth_repo.get_member_by_identifier(db, identifier)
 
@@ -37,7 +39,7 @@ async def send_login_otp(data: LoginRequest, db: AsyncSession):
         # delete expired OTPs
         await auth_repo.delete_expired_otps(db, current_time)
 
-        # delete previous OTP
+        # delete previous OTPs
         await auth_repo.delete_member_otps(db, member.id)
 
         otp_code = generate_otp()
@@ -51,9 +53,14 @@ async def send_login_otp(data: LoginRequest, db: AsyncSession):
             expires_at
         )
 
-        # send email if identifier is email
+        # send email
         if "@" in identifier:
-            send_otp_email(identifier, otp_code)
+            try:
+                send_otp_email(identifier, otp_code)
+            except Exception as email_error:
+                logger.error(
+                    f"Failed to send OTP email to {identifier}: {str(email_error)}"
+                )
 
         logger.info(f"OTP generated for member_id={member.id}")
 
@@ -64,30 +71,60 @@ async def send_login_otp(data: LoginRequest, db: AsyncSession):
     except HTTPException:
         raise
 
+    except SQLAlchemyError as db_error:
+
+        await db.rollback()
+
+        logger.error(
+            f"Database error while sending OTP for {identifier}: {str(db_error)}"
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error while processing request"
+        )
+
+    except ValueError as value_error:
+
+        logger.error(
+            f"Invalid data while sending OTP for {identifier}: {str(value_error)}"
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid request data"
+        )
+
     except Exception as e:
 
-        logger.error(f"Error while sending OTP: {str(e)}")
+        logger.exception(
+            f"Unexpected error while sending OTP for {identifier}: {str(e)}"
+        )
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
         )
 
+
 # =====================================================
-
 # VERIFY OTP
-
 # =====================================================
 
 async def verify_login_otp(data: VerifyOTPRequest, db: AsyncSession):
+
+    identifier = data.mobile_or_email
+    otp = data.otp
+
     try:
-        identifier = data.mobile_or_email
-        otp = data.otp
 
         member = await auth_repo.get_member_by_identifier(db, identifier)
 
         if not member:
-            logger.warning(f"OTP verification failed. Member not found: {identifier}")
+
+            logger.warning(
+                f"OTP verification failed. Member not found: {identifier}"
+            )
 
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -118,25 +155,36 @@ async def verify_login_otp(data: VerifyOTPRequest, db: AsyncSession):
         await auth_repo.delete_otp(db, otp_obj)
 
         # =====================================================
-        # CREATE ACCESS TOKEN (INCLUDING LOCATION FIELDS)
+        # CREATE ACCESS TOKEN
         # =====================================================
 
         token_payload = {
-    "member_id": member.id,
-    "kriya_id": member.kriya_id,
-    "full_name": member.full_name,
-    "state_id": member.state_id,
-    "district_id": member.district_id,
-    "constituency_id": member.constituency_id,
-    "mandal_id": member.mandal_id,
-    "panchayat_id": member.panchayat_id,
-    "ward_id": member.ward_id
-}
-        token = create_access_token(token_payload)
+            "member_id": member.id,
+            "kriya_id": member.kriya_id,
+            "full_name": member.full_name,
+            "state_id": member.state_id,
+            "district_id": member.district_id,
+            "constituency_id": member.constituency_id,
+            "mandal_id": member.mandal_id,
+            "panchayat_id": member.panchayat_id,
+            "ward_id": member.ward_id
+        }
+
+        try:
+            token = create_access_token(token_payload)
+        except Exception as token_error:
+
+            logger.error(
+                f"JWT creation failed for member_id={member.id}: {str(token_error)}"
+            )
+
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Token generation failed"
+            )
 
         logger.info(f"Member logged in successfully: member_id={member.id}")
 
-        # member response
         member_data = {
             "id": member.id,
             "full_name": member.full_name,
@@ -162,12 +210,37 @@ async def verify_login_otp(data: VerifyOTPRequest, db: AsyncSession):
     except HTTPException:
         raise
 
+    except SQLAlchemyError as db_error:
+
+        await db.rollback()
+
+        logger.error(
+            f"Database error during OTP verification for {identifier}: {str(db_error)}"
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error while verifying OTP"
+        )
+
+    except ValueError as value_error:
+
+        logger.error(
+            f"Invalid OTP input for {identifier}: {str(value_error)}"
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OTP format"
+        )
+
     except Exception as e:
 
-        logger.error(f"Error verifying OTP: {str(e)}")
+        logger.exception(
+            f"Unexpected error verifying OTP for {identifier}: {str(e)}"
+        )
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
         )
-
